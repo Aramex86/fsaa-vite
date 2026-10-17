@@ -1,0 +1,35 @@
+/* FSAA Vite demo — minimal styles, architecture over looks. */
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  margin: 0;
+  color: #1e293b;
+}
+
+header {
+  padding: 16px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  gap: 24px;
+}
+
+nav {
+  display: flex;
+  gap: 16px;
+}
+
+main {
+  padding: 24px;
+  max-width: 860px;
+}
+
+th,
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+th {
+  font-weight: 600;
+  color: #475569;
+}
