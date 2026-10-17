@@ -5,10 +5,13 @@ import { Link } from 'react-router-dom';
 export function HomePage() {
   return (
     <section>
-      <h1>FSAA — Feature-Sliced Atomic Architecture (Vite)</h1>
-      <p>
-        FSD + Atomic Design with the missing decision rules: <em>where does UI go?</em>
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <h1>FSAA — Feature-Sliced Atomic Architecture (Vite)  </h1>
+        <a style={{ color: '#43e0bd', textDecoration: 'none', display: 'inline-block',fontSize: '18px', fontWeight: 'bold' }} href="https://aramex86.github.io/fsaa/" target="_blank" rel="noopener noreferrer">Docs</a>
+      </div>
+        <p>
+          FSD + Atomic Design with the missing decision rules: <em>where does UI go?</em>
+        </p>
       <ul>
         <li>
           <Link to="/projects">Projects overview</Link> — feature owns business columns
