@@ -1,17 +1,21 @@
-# FSAA for plain React (Vite template)
+# FSAA for plain React (Vite + react-router)
 
 **Same methodology, same three rules, same ESLint boundaries — for teams NOT on Next.js.**
 
-Plain React SPA starter: Vite 7 + React 19 + TypeScript + react-router 7, with FSAA layers in `src/` identical to the [Next.js template](https://github.com/Aramex86/fsaa-react) (main branch). The **only** difference between the two templates is the pages layer:
+This is the official FSAA starter for **plain React SPAs**. On Next.js? Use the sibling template: [github.com/Aramex86/fsaa-react](https://github.com/Aramex86/fsaa-react).
 
-| | Next.js template (main) | Vite template (`template/vite`) |
+- Vite 7 + React 19 + TypeScript + react-router 7
+- FSAA layers in `src/` **identical** to the Next.js template
+- The **only** difference between the two templates is the pages layer:
+
+| | Next.js template ([fsaa-react](https://github.com/Aramex86/fsaa-react)) | This template (fsaa-vite) |
 |---|---|---|
 | Pages layer | **App Router itself** (`app/**/page.tsx`, thin routes) | **`src/pages/`** + react-router (thin compositions) |
 | app layer | `src/app` conventions + root layout | `src/app/main.tsx` (providers, router wiring) |
 | features / entities / shared | identical | identical |
-| ESLint boundaries | `.eslintrc`-era rules (flat) | identical rules |
+| ESLint boundaries | identical rules | identical rules |
 
-> Methodology & decision rules: [github.com/Aramex86/fsaa](https://github.com/Aramex86/fsaa) · Live docs: [aramex86.github.io/fsaa](https://aramex86.github.io/fsaa/) · Next.js template: [fsaa-react (main)](https://github.com/Aramex86/fsaa-react)
+> Methodology & decision rules: [github.com/Aramex86/fsaa](https://github.com/Aramex86/fsaa) · Live docs: [aramex86.github.io/fsaa](https://aramex86.github.io/fsaa/)
 
 ## Quick start
 
