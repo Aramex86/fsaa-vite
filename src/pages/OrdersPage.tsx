@@ -1,4 +1,4 @@
-import { OrdersOverview } from '@features/orders-overview';
+import { OrdersOverview } from "@features/orders-overview";
 
 /* Thin page composition (FSAA pages layer). */
 

@@ -1,5 +1,6 @@
 {
   "name": "fsaa-vite",
+  "packageManager": "pnpm@9.15.0",
   "version": "0.1.0",
   "private": true,
   "description": "FSAA boilerplate for plain React (Vite) — same layers, aliases and ESLint boundaries as the Next.js template; pages layer lives in src/pages with react-router",
