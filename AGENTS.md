@@ -14,6 +14,8 @@ fix the code OR the rule — never bypass the check.
 <!--check: cmd-pnpm-typecheck --> `pnpm typecheck` — tsc, zero errors
 <!--check: cmd-pnpm-build -->    `pnpm build` — tsc -b && vite build, must pass
 
+Procedures for agents: agents/add-module.md, agents/add-pattern.md, agents/run-stack.md
+
 ## Package manager
 
 <!--check: single-lockfile -->
