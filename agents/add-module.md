@@ -17,9 +17,10 @@ you added. An empty tests folder must never be committed.
 
 - Data access and ALL business logic live in `src/entities/`, never in features.
   A feature consumes entity exports; it never contains api/model/types of its own.
-- An entity starts as `src/entities/<noun>/` with `index.ts` + `<noun>.ts`
-  (type + data access). As it grows it may split into `api` / `slice` / `types`
-  parts — still inside the entity.
+- An entity is `src/entities/<noun>/`: `index.ts` (public API), `types.ts`,
+  `api.ts` (data access), `slice.ts` (state / business logic) — flat files
+  in the entity folder, plus `__tests__/`. ALL business logic lives here;
+  features never contain api/model/types of their own. No nested `model/`.
 - Shared UI needs go to `src/shared/ui/` (see the Graduation pattern).
 
 ## 3. Register the page
