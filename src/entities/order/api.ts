@@ -1,12 +1,6 @@
-/* entities/order — business model + data access. */
+/* entities/order — data access. Swap for a real API without touching features. */
 
-export interface Order {
-  id: string;
-  reference: string;
-  projectName: string;
-  amount: number;
-  status: 'pending' | 'paid' | 'cancelled';
-}
+import type { Order } from './types';
 
 const ORDERS: Order[] = [
   { id: 'o1', reference: 'INV-2026-001', projectName: 'Core Banking Migration', amount: 18500, status: 'paid' },
