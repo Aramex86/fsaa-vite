@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * FSAA drift-check v4.4 — verifies that AGENTS.md (the machine contract)
+ * FSAA drift-check v4.5 — verifies that AGENTS.md (the machine contract)
  * still matches the real code. Cross-platform: pure Node, no shell tools.
  *
  * Two-way binding: unknown/unmapped rules are errors, missing markers are errors,
@@ -189,10 +189,18 @@ const checks = {
     ),
   /** Enforced by GitHub branch protection, not locally — always passes. */
   "pr-flow": () => true,
+  /** Supply-chain policy: lifecycle scripts of dependencies must be blocked
+   *  by default (pnpm 10+, allowlist-only builds). */
+  "script-policy": () => {
+    const pm = pkg.packageManager || "";
+    const major = Number((pm.match(/pnpm@(\d+)/) || [])[1] || 0);
+    const allow = pkg.pnpm && pkg.pnpm.onlyBuiltDependencies;
+    return major >= 10 && Array.isArray(allow);
+  },
 };
 
 console.log();
-console.log(c.bold(c.cyan("  FSAA drift-check")) + c.dim("  v4.4"));
+console.log(c.bold(c.cyan("  FSAA drift-check")) + c.dim("  v4.5"));
 console.log(c.dim(`  AGENTS.md: ${ids.length} rules · fsaa:contract`));
 console.log(c.dim("  " + "─".repeat(46)));
 
