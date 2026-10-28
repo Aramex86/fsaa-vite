@@ -16,6 +16,7 @@
 import importPlugin from 'eslint-plugin-import';
 import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,7 +31,7 @@ const sharedRules = {
     {
       patterns: [
         { group: ['**/app/**', '@app/*'], message: appMessage },
-        { group: ['@features/*', '@pages/*'], message: upwardMessage },
+        { group: ['@entities/*', '@features/*', '@pages/*'], message: upwardMessage },
       ],
     },
   ],
@@ -55,9 +56,35 @@ const featuresRules = {
       patterns: [
         { group: ['**/app/**', '@app/*', '@pages/**'], message: appMessage },
         { group: ['@features/*', '@pages/*', 'src/features/**'], message: 'FSAA: features do not import each other — move code via @entities (data) or @shared (UI), or graduate it.' },
+        { regex: '^\.\./\.\./(features|pages|app)/', message: 'FSAA: relative import into another layer the wrong way — cross-slice goes via @entities (data) or @shared (UI); stay inside your slice otherwise.' },
       ],
     },
   ],
+};
+
+
+/* Cross-slice zones are built dynamically: every slice under src/features/
+   gets its own zone — import/no-restricted-paths RESOLVES relative paths,
+   so leaving your slice via ../.. is caught, while legal downward relatives
+   (../../entities, ../../shared) keep working. Mirror of drift-check v4.4. */
+const featuresRoot = path.join(__dirname, "src", "features");
+const featureZones = () => {
+  let slices = [];
+  try {
+    slices = fs.readdirSync(featuresRoot).filter((f) => fs.statSync(path.join(featuresRoot, f)).isDirectory());
+  } catch {
+    /* no features dir yet (fresh template) */
+  }
+  const zones = [];
+  for (const a of slices)
+    for (const b of slices)
+      if (a !== b)
+        zones.push({
+          target: `./src/features/${a}`,
+          from: `./src/features/${b}`,
+          message: "FSAA: features do not import each other — move code via @entities (data) or @shared (UI), or graduate it.",
+        });
+  return zones;
 };
 
 export default [
@@ -82,18 +109,18 @@ export default [
   },
   {
     files: ['src/shared/**/*.{ts,tsx}'],
-    ignores: ['**/index.ts'],
     rules: sharedRules,
   },
   {
     files: ['src/entities/**/*.{ts,tsx}'],
-    ignores: ['**/index.ts'],
     rules: entitiesRules,
   },
   {
     files: ['src/features/**/*.{ts,tsx}'],
-    ignores: ['**/index.ts'],
-    rules: featuresRules,
+    rules: {
+      ...featuresRules,
+      'import/no-restricted-paths': ['error', { zones: featureZones() }],
+    },
   },
   {
     /* src/pages: may import features + shared (composition of scenarios) */

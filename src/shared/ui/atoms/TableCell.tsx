@@ -1,5 +1,3 @@
-'use client';
-
 /* shared/ui/atoms/TableCell — generic table cell. Passes the boundary test:
    describable without users/orders/projects. */
 
