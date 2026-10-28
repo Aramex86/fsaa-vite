@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { SITE } from "@shared/config/site";
 
 /* Thin page composition: import -> render. */
 
@@ -37,7 +38,7 @@ export function HomePage() {
       <p className="hint">
         Same layers and ESLint boundaries as the{' '}
         <a href="https://github.com/Aramex86/fsaa-react">Next.js template</a> — only the pages
-        layer differs. Try violating a layer: <code className="inline">npm run lint</code> → red.
+        layer differs. Try violating a layer: <code className="inline">pnpm lint</code> → red.
       </p>
     </section>
   );

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * FSAA drift-check v4.3 — verifies that AGENTS.md (the machine contract)
+ * FSAA drift-check v4.4 — verifies that AGENTS.md (the machine contract)
  * still matches the real code. Cross-platform: pure Node, no shell tools.
  *
  * Two-way binding: unknown/unmapped rules are errors, missing markers are errors,
@@ -10,6 +10,9 @@
  * not just the presence of boundary words in eslint.config.mjs.
  *
  * Output is colored when stdout is a TTY; piped output stays plain (logs/CI).
+ *
+ * v4.4: boundary-imports also catches relative cross-slice imports —
+ * leaving the slice directory via ../.. — matching the eslint regex rule.
  * Force plain output with FORCE_COLOR=0.
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
@@ -93,9 +96,53 @@ function boundaryHits() {
   out.push(...hits("src/shared", /['"]@(entities|features|pages|app)\//));
   out.push(...hits("src/entities", /['"]@(features|pages|app)\//));
   out.push(...hits("src/features", /['"]@features\/|['"]@(pages|app)\//));
+  out.push(...relativeCrossSliceHits());
   return out;
 }
 
+
+/**
+ * Relative cross-slice imports: a file in src/features/<feature>/ importing a
+ * relative path whose real target lands in a DIFFERENT feature directory.
+ * Specifier regexes cannot do this (a "../.." may legally point down to
+ * entities/shared) — so resolve the specifier like a bundler would.
+ */
+function relativeCrossSliceHits() {
+  if (!existsSync("src/features")) return [];
+  const out = [];
+  for (const slice of readdirSync("src/features")) {
+    const sliceDir = "src/features/" + slice;
+    const walkFiles = (d) => {
+      const list = [];
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const p = d + "/" + e.name;
+        if (e.isDirectory()) list.push(...walkFiles(p));
+        else if (/\.[jt]sx?$/.test(e.name)) list.push(p);
+      }
+      return list;
+    };
+    for (const file of walkFiles(sliceDir)) {
+      const text = readFileSync(file, "utf8");
+      const specs = [...text.matchAll(/(?:from\s*|import\s*|import\(\s*)['"](\.{1,2}\/[^'"]+)['"]/g)]
+        .map((m) => m[1]);
+      for (const spec of specs) {
+        const fromDir = file.slice(0, file.lastIndexOf("/"));
+        const parts = (fromDir + "/" + spec).split("/");
+        const stack = [];
+        for (const part of parts) {
+          if (part === "" || part === ".") continue;
+          if (part === "..") stack.pop();
+          else stack.push(part);
+        }
+        const target = stack.join("/");
+        const base = file.split("/").slice(2, 3)[0]; // the slice name (after src/features/)
+        if (target.startsWith("src/features/") && target.split("/")[2] !== base)
+          out.push(file);
+      }
+    }
+  }
+  return [...new Set(out)];
+}
 /**
  * Map: AGENTS.md rule id → verification function.
  * Return contract: true = pass, false = generic fail, string[] = offending files.
@@ -145,7 +192,7 @@ const checks = {
 };
 
 console.log();
-console.log(c.bold(c.cyan("  FSAA drift-check")) + c.dim("  v4.3"));
+console.log(c.bold(c.cyan("  FSAA drift-check")) + c.dim("  v4.4"));
 console.log(c.dim(`  AGENTS.md: ${ids.length} rules · fsaa:contract`));
 console.log(c.dim("  " + "─".repeat(46)));
 

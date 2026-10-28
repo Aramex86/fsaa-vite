@@ -1,5 +1,3 @@
-'use client';
-
 import { useEffect, useState } from 'react';
 import { DataTable } from '@shared/ui/molecules/table/DataTable';
 import { getOrders, type Order } from '@entities/order';

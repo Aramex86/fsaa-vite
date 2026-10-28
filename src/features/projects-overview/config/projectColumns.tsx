@@ -23,5 +23,3 @@ export const projectColumns: Column<ProjectRow>[] = [
     render: (row) => `$${row.budget.toLocaleString('en-US')}`,
   },
 ];
-
-export { TableHeaderCell };
