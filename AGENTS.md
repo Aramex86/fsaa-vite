@@ -18,6 +18,12 @@ Procedures for agents: agents/add-module.md, agents/add-pattern.md, agents/run-s
 
 ## Package manager
 
+<!--check: script-policy -->
+
+Dependency lifecycle scripts do not run by default (pnpm 10+).
+Only explicitly allowlisted packages may run installs/builds:
+`pnpm.onlyBuiltDependencies` in package.json (seed: esbuild).
+
 <!--check: single-lockfile -->
 
 This repo uses pnpm ONLY. pnpm-lock.yaml is the single lockfile.
