@@ -1,21 +1,31 @@
 #!/usr/bin/env node
 /**
- * FSAA drift-check v4.5 — verifies that AGENTS.md (the machine contract)
- * still matches the real code. Cross-platform: pure Node, no shell tools.
+ * FSAA drift-check v4.6 — verifies that AGENTS.md (the machine contract)
+ * still matches the real code. Cross-platform: Node + eslint in-process.
  *
  * Two-way binding: unknown/unmapped rules are errors, missing markers are errors,
  * and every passing rule must hold in the code itself. Exit 1 on any drift.
  *
- * v4.2: boundary-imports scans real imports (upward + cross-slice),
- * not just the presence of boundary words in eslint.config.mjs.
+ * v4.6 — single source of truth: the code-level checks (no-ui-fetch,
+ * boundary-imports, ui-location contents) are delegated to the
+ * eslint-plugin-fsaa npm package. The template's eslint.config.mjs wires the
+ * SAME package into `pnpm lint`, so drift-check and lint share one rule
+ * implementation. This script keeps the CONTRACT side: AGENTS.md markers,
+ * two-way binding, commands, lockfile, supply-chain policy, file paths.
+ * v4.4: boundary-imports caught relative cross-slice imports.
+ * v4.5: script-policy (pnpm 10+ allowlist).
  *
  * Output is colored when stdout is a TTY; piped output stays plain (logs/CI).
- *
- * v4.4: boundary-imports also catches relative cross-slice imports —
- * leaving the slice directory via ../.. — matching the eslint regex rule.
  * Force plain output with FORCE_COLOR=0.
  */
 import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+
+/** Template shape: layer dirs required by the contract (fsaa-vite / Vite+react-router). */
+const LAYER_DIRS = ["src/app", "src/pages", "src/features", "src/entities", "src/shared"];
+/** Contract-named files that must exist. */
+const CONTRACT_FILES = ["src/pages/router.tsx", "src/app/main.tsx", "eslint.config.mjs"];
 
 /** ANSI color helpers; no-ops when colors are disabled. */
 const useColor = process.stdout.isTTY && process.env.FORCE_COLOR !== "0";
@@ -49,103 +59,93 @@ const scripts = pkg.scripts || {};
 const eslintCfg = readFileSync("eslint.config.mjs", "utf8");
 /** True when package.json defines a script with this name. */
 const hasScript = (n) => typeof scripts[n] === "string";
-/** Anything that looks like direct data fetching inside UI layers. */
-const FORBIDDEN = /(^|[^.$\w])fetch\(|\baxios\b/;
+
+/** Wire point for the single source of truth. */
+const createRequire0 = createRequire(import.meta.url);
+const require = createRequire0;
 
 /**
- * Recursively collect code files under `dir` whose text matches `re`.
- * Pure Node walk — identical behavior on Windows, Linux and macOS.
- * @param {string} dir relative directory to scan
- * @param {RegExp} [re] pattern a violating file must match (default: fetch/axios)
- * @returns {string[]} paths of offending files in walk order
+ * eslint-plugin-fsaa findings, run once over the repo (src/**, app/**).
+ * The plugin package implements the code checks; this script only maps
+ * its findings to AGENTS.md rule ids.
+ * @returns {Promise<{ok: true, byRule: Map<string,string[]>} | {ok: false, error: string}>}
  */
-function hits(dir, re = FORBIDDEN) {
-  if (!existsSync(dir)) return [];
-  const out = [];
-  const walk = (d) => {
-    for (const e of readdirSync(d, { withFileTypes: true })) {
-      const p = d + "/" + e.name;
-      if (e.isDirectory()) walk(p);
-      else if (/\.[jt]sx?$/.test(e.name) && re.test(readFileSync(p, "utf8")))
-        out.push(p);
-    }
-  };
-  walk(dir);
-  return out;
-}
-/** Offending files inside every src/features/<feature>/ui folder. */
-const featureUiHits = () => {
-  if (!existsSync("src/features")) return [];
-  return readdirSync("src/features").flatMap((f) =>
-    hits("src/features/" + f + "/ui"),
-  );
-};
-
-/**
- * Real import-boundary violations across src/, by layer:
- * - src/shared/**    may import only @shared/* (bottom layer)
- * - src/entities/**  may not import @features/@pages/@app above it
- * - src/features/**  must not use the @features alias (cross-slice — own
- *   slice imports are relative) or @pages/@app above it
- * ESLint enforces the same rules on lint; this scan guards CI even if
- * someone relaxes the lint config.
- * @returns {string[]} paths of files with violating imports
- */
-function boundaryHits() {
-  const out = [];
-  out.push(...hits("src/shared", /['"]@(entities|features|pages|app)\//));
-  out.push(...hits("src/entities", /['"]@(features|pages|app)\//));
-  out.push(...hits("src/features", /['"]@features\/|['"]@(pages|app)\//));
-  out.push(...relativeCrossSliceHits());
-  return out;
-}
-
-
-/**
- * Relative cross-slice imports: a file in src/features/<feature>/ importing a
- * relative path whose real target lands in a DIFFERENT feature directory.
- * Specifier regexes cannot do this (a "../.." may legally point down to
- * entities/shared) — so resolve the specifier like a bundler would.
- */
-function relativeCrossSliceHits() {
-  if (!existsSync("src/features")) return [];
-  const out = [];
-  for (const slice of readdirSync("src/features")) {
-    const sliceDir = "src/features/" + slice;
-    const walkFiles = (d) => {
-      const list = [];
-      for (const e of readdirSync(d, { withFileTypes: true })) {
-        const p = d + "/" + e.name;
-        if (e.isDirectory()) list.push(...walkFiles(p));
-        else if (/\.[jt]sx?$/.test(e.name)) list.push(p);
-      }
-      return list;
-    };
-    for (const file of walkFiles(sliceDir)) {
-      const text = readFileSync(file, "utf8");
-      const specs = [...text.matchAll(/(?:from\s*|import\s*|import\(\s*)['"](\.{1,2}\/[^'"]+)['"]/g)]
-        .map((m) => m[1]);
-      for (const spec of specs) {
-        const fromDir = file.slice(0, file.lastIndexOf("/"));
-        const parts = (fromDir + "/" + spec).split("/");
-        const stack = [];
-        for (const part of parts) {
-          if (part === "" || part === ".") continue;
-          if (part === "..") stack.pop();
-          else stack.push(part);
+let lintCache;
+function fsaaLint() {
+  if (lintCache) return lintCache;
+  const dep =
+    pkg.devDependencies?.["eslint-plugin-fsaa"] || pkg.dependencies?.["eslint-plugin-fsaa"];
+  if (!dep)
+    return Promise.resolve(
+      (lintCache = {
+        ok: false,
+        error: "eslint-plugin-fsaa is not a devDependency (single source of truth missing)",
+      }),
+    );
+  try {
+    const { Linter } = require("eslint");
+    const parser = require("@typescript-eslint/parser");
+    const pending = import("eslint-plugin-fsaa");
+    return pending.then((m) => {
+      const fsaa = m.default ?? m;
+      const linter = new Linter();
+      const flat = [
+        {
+          files: ["**/*.{ts,tsx}"],
+          languageOptions: {
+            parser,
+            parserOptions: { ecmaVersion: "latest", sourceType: "module", ecmaFeatures: { jsx: true } },
+          },
+        },
+        ...fsaa.configs.recommended,
+      ];
+      const files = [];
+      const walk = (d) => {
+        if (!existsSync(d)) return;
+        for (const e of readdirSync(d, { withFileTypes: true })) {
+          if (["node_modules", ".git", "dist", ".next", "assets"].includes(e.name)) continue;
+          const p = join(d, e.name);
+          if (e.isDirectory()) walk(p);
+          else if (/\.[jt]sx?$/.test(e.name)) files.push(p);
         }
-        const target = stack.join("/");
-        const base = file.split("/").slice(2, 3)[0]; // the slice name (after src/features/)
-        if (target.startsWith("src/features/") && target.split("/")[2] !== base)
-          out.push(file);
+      };
+      walk("src");
+      walk("app");
+      const byRule = new Map();
+      const cwd = process.cwd().replace(/[\\/]+$/, "") + "/";
+      for (const f of files) {
+        const abs = (f.startsWith("/") ? f : cwd + f.replace(/[\\/]+/g, "/")).replace(/\/+$/, "");
+        for (const msg of linter.verify(readFileSync(f, "utf8"), flat, { filename: abs })) {
+          if (!msg.ruleId || !msg.ruleId.startsWith("fsaa/")) continue;
+          if (!byRule.has(msg.ruleId)) byRule.set(msg.ruleId, []);
+          byRule.get(msg.ruleId).push(
+            f.replace(/[\\/]+/g, "/").replace(/^\.?\/?/, "") + ":" + msg.line,
+          );
+        }
       }
-    }
+      return (lintCache = { ok: true, byRule });
+    });
+  } catch (e) {
+    return Promise.resolve((lintCache = { ok: false, error: e.message }));
   }
-  return [...new Set(out)];
 }
+/** AGENTS.md rule id → fsaa plugin rule id. */
+const PLUGIN_RULE_MAP = {
+  "no-ui-fetch": "fsaa/no-raw-fetch",
+  "boundary-imports": "fsaa/boundary-imports",
+  "ui-location": "fsaa/ui-location",
+};
+/** Delegated code check: contract rule id → findings from the plugin. */
+async function fromPlugin(id) {
+  const res = await fsaaLint();
+  if (!res.ok) throw new Error(res.error);
+  const hits = res.byRule.get(PLUGIN_RULE_MAP[id]) ?? [];
+  return hits.length ? hits : true;
+}
+
 /**
- * Map: AGENTS.md rule id → verification function.
- * Return contract: true = pass, false = generic fail, string[] = offending files.
+ * Map: AGENTS.md rule id → verification function (async allowed since v4.6).
+ * Return contract: true = pass, false = generic fail, string[] = offending entries.
  */
 const checks = {
   /** Pnpm is the package manager: a healthy lockfile exists. */
@@ -159,34 +159,22 @@ const checks = {
     existsSync("pnpm-lock.yaml") &&
     !existsSync("package-lock.json") &&
     !existsSync("yarn.lock"),
-  "ui-location": () =>
-    [
-      "src/app",
-      "src/pages",
-      "src/features",
-      "src/entities",
-      "src/shared",
-      "src/shared/ui",
-    ].every(existsSync),
-  /** UI layers and route pages must do no direct fetching. */
-  "no-ui-fetch": () => {
-    const bad = [
-      ...hits("src/pages"),
-      ...hits("src/shared/ui"),
-      ...featureUiHits(),
-    ];
-    return bad.length ? bad : true;
+  /** Contract layer dirs exist (plugin ui-location rule covers the contents). */
+  "ui-location": async () => {
+    const missing = LAYER_DIRS.filter((d) => !existsSync(d));
+    if (missing.length) return ["missing layer dir(s): " + missing.join(", ")];
+    return fromPlugin("ui-location");
   },
-  /** No upward/cross-slice imports in src/ AND the eslint boundary config stays. */
-  "boundary-imports": () => {
-    const bad = boundaryHits();
-    return bad.length ? bad : eslintCfg.includes("FSAA") ? true : false;
+  /** UI layers and route pages must do no direct fetching — plugin rule. */
+  "no-ui-fetch": () => fromPlugin("no-ui-fetch"),
+  /** Imports flow only downward — plugin rule — AND the wiring stays in the config. */
+  "boundary-imports": async () => {
+    const r = await fromPlugin("boundary-imports");
+    if (r !== true) return r;
+    return eslintCfg.includes("fsaaPlugin.configs.recommended") ? true : false;
   },
-  /** Contract-named files exist (root shell, home, lint config). */
-  "file-paths": () =>
-    ["src/pages/router.tsx", "src/app/main.tsx", "eslint.config.mjs"].every(
-      existsSync,
-    ),
+  /** Contract-named files exist. */
+  "file-paths": () => CONTRACT_FILES.every(existsSync),
   /** Enforced by GitHub branch protection, not locally — always passes. */
   "pr-flow": () => true,
   /** Supply-chain policy: lifecycle scripts of dependencies must be blocked
@@ -200,8 +188,8 @@ const checks = {
 };
 
 console.log();
-console.log(c.bold(c.cyan("  FSAA drift-check")) + c.dim("  v4.5"));
-console.log(c.dim(`  AGENTS.md: ${ids.length} rules · fsaa:contract`));
+console.log(c.bold(c.cyan("  FSAA drift-check")) + c.dim("  v4.6"));
+console.log(c.dim(`  AGENTS.md: ${ids.length} rules · code checks: eslint-plugin-fsaa`));
 console.log(c.dim("  " + "─".repeat(46)));
 
 const problems = [];
@@ -226,27 +214,22 @@ for (const id of ids) {
   let ok,
     detail = "";
   try {
-    const r = checks[id]();
+    const r = await checks[id]();
     if (r === true) ok = true;
     else if (r === false) {
       ok = false;
       detail = "the check failed";
-    } else if (id === "boundary-imports") {
-      // array = offending import paths
+    } else if (Array.isArray(r)) {
       ok = r.length === 0;
       if (!ok)
-        detail =
-          "upward/cross-slice imports in: " +
-          r.slice(0, 3).join(", ") +
-          (r.length > 3 ? ` (+${r.length - 3} more)` : "");
+        detail = PLUGIN_RULE_MAP[id]
+          ? `plugin ${PLUGIN_RULE_MAP[id]} reported: ` +
+            r.slice(0, 3).join(", ") +
+            (r.length > 3 ? ` (+${r.length - 3} more)` : "")
+          : r.slice(0, 3).join(", ");
     } else {
-      // array = list of offending files
-      ok = r.length === 0;
-      if (!ok)
-        detail =
-          "fetch/axios found in: " +
-          r.slice(0, 3).join(", ") +
-          (r.length > 3 ? ` (+${r.length - 3} more)` : "");
+      ok = false;
+      detail = "unexpected check result";
     }
   } catch (e) {
     ok = false;
