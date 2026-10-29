@@ -19,6 +19,7 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fsaaPlugin from 'eslint-plugin-fsaa';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -132,4 +133,9 @@ export default [
       ],
     },
   },
+  /* eslint-plugin-fsaa 0.1.1 — the same contract as npm lint rules.
+     Single source of truth: the npm package implements the checks; this
+     config wires fsaa/recommended in, so `pnpm lint` and drift-check share
+     one rule implementation. */
+  ...fsaaPlugin.configs.recommended,
 ];
